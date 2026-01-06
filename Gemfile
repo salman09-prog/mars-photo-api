@@ -1,7 +1,7 @@
 source 'https://rubygems.org'
 
 # this is needed for Heroku to know what Ruby we're using
-ruby '3.2.2'
+ruby '3.4.8'
 
 gem 'pg', '~> 1.0'
 gem 'rake'
