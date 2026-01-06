@@ -26,7 +26,7 @@ class CuriosityScraper
     start_sol = latest_sol_scraped + 1
 
     # Stop after 10 sols (Safety limit for free tier)
-    end_sol = [start_sol + 10, latest_sol_available].min
+    end_sol = [start_sol + 100, latest_sol_available].min
 
     # If we are already caught up, don't do anything
     return [] if start_sol > latest_sol_available
