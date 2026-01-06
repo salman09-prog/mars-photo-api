@@ -13,15 +13,27 @@ class CuriosityScraper
   end
 
   def collect_links
-    # Fetch the latest sol available through the API
-    response = JSON.parse(URI.open(BASE_URL + "?order=sol%20desc,instrument_sort%20asc,sample_type_sort%20asc,%20date_taken%20desc&per_page=1&page=0&condition_1=msl:mission").read)
+  # ... (keep existing lines) ...
     latest_sol_available = response["items"].first["sol"].to_i
-    latest_sol_scraped = rover.photos.maximum(:sol).to_i
-    sols_to_scrape = (latest_sol_scraped..latest_sol_available) #.to_a.last(10) # Only fetch the last 10 sols
+  
+  # Use 0 if no photos exist yet
+    latest_sol_scraped = rover.photos.maximum(:sol).to_i || 0
+  
+  # LOGIC CHANGE:
+  # Start from where we left off
+    start_sol = latest_sol_scraped + 1
+  
+  # Stop after 50 sols (so the deploy doesn't time out)
+    end_sol = [start_sol + 50, latest_sol_available].min
+  
+  # If we are already caught up, don't do anything
+    return [] if start_sol > latest_sol_available
+  
+    sols_to_scrape = (start_sol..end_sol)
 
     sols_to_scrape.map { |sol|
-      "#{BASE_URL}?order=sol%20desc,instrument_sort%20asc,sample_type_sort%20asc,%20date_taken%20desc&per_page=200&page=0&condition_1=msl:mission&condition_2=#{sol}:sol:in"
-    }
+    "#{BASE_URL}?order=sol%20desc,instrument_sort%20asc,sample_type_sort%20asc,%20date_taken%20desc&per_page=200&page=0&condition_1=msl:mission&condition_2=#{sol}:sol:in"
+  }
   end
 
   private
