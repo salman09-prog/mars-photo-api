@@ -20,15 +20,16 @@ class CuriosityScraper
   # Helper to open URLs with error handling
   def open_url(url)
     puts "📡 Fetching: #{url}"
-    URI.open(url).read
+    # Add User-Agent header
+    URI.open(url, "User-Agent" => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36").read
   rescue OpenURI::HTTPError => e
-    puts "❌ HTTP Error: #{e.message} (Likely rate limit or invalid key)"
+    puts "❌ HTTP Error: #{e.message} - URL: #{url}"
     return nil
   end
 
   def collect_and_save_photos
     # 1. Find out the latest Sol from NASA's manifest
-    manifest_url = "https://api.nasa.gov/mars-photos/api/v1/manifests/curiosity?api_key=#{@api_key}"
+    manifest_url = "https://api.nasa.gov/mars-photos/api/v1/manifests/Curiosity?api_key=#{@api_key}"
     json_data = open_url(manifest_url)
     return if json_data.nil?
 
