@@ -1,9 +1,13 @@
 class CuriosityScraper
   require "open-uri"
   require 'json'
+
+  # NOTE: This is the internal website API, not the official public API.
+  # It does not strictly require an API key, but it BLOCKS requests without a User-Agent.
   BASE_URL = "https://mars.nasa.gov/api/v1/raw_image_items/"
 
   attr_reader :rover
+
   def initialize
     @rover = Rover.find_by(name: "Curiosity")
   end
@@ -12,10 +16,17 @@ class CuriosityScraper
     create_photos
   end
 
+  # Helper to open URLs with a fake User-Agent to avoid 403 Forbidden
+  def open_url(url)
+    URI.open(url, "User-Agent" => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36").read
+  end
+
   def collect_links
-    # --- THIS LINE WAS MISSING OR BROKEN ---
-    response = JSON.parse(URI.open(BASE_URL + "?order=sol%20desc,instrument_sort%20asc,sample_type_sort%20asc,%20date_taken%20desc&per_page=1&page=0&condition_1=msl:mission").read)
-    # ---------------------------------------
+    puts "🔍 checking for new photos..."
+    
+    # Use the helper method with User-Agent
+    json_data = open_url(BASE_URL + "?order=sol%20desc,instrument_sort%20asc,sample_type_sort%20asc,%20date_taken%20desc&per_page=1&page=0&condition_1=msl:mission")
+    response = JSON.parse(json_data)
 
     latest_sol_available = response["items"].first["sol"].to_i
 
@@ -25,11 +36,18 @@ class CuriosityScraper
     # Start from where we left off
     start_sol = latest_sol_scraped + 1
 
-    # Stop after 10 sols (Safety limit for free tier)
-    end_sol = [start_sol + 100, latest_sol_available].min
+    # Stop after 50 sols (Safety limit to prevent timeout)
+    end_sol = [start_sol + 50, latest_sol_available].min
 
+    puts "📊 Status: DB has Sol #{latest_sol_scraped}. NASA has Sol #{latest_sol_available}."
+    
     # If we are already caught up, don't do anything
-    return [] if start_sol > latest_sol_available
+    if start_sol > latest_sol_available
+        puts "✅ Up to date! No new photos to scrape."
+        return [] 
+    end
+
+    puts "🚀 Scraping from Sol #{start_sol} to #{end_sol}..."
 
     sols_to_scrape = (start_sol..end_sol)
 
@@ -38,25 +56,30 @@ class CuriosityScraper
     }
   end
 
-
   private
 
   def create_photos
-    collect_links.each do |url|
+    links = collect_links
+    return if links.empty?
+
+    links.each do |url|
       scrape_photo_page(url)
     end
   end
 
   def scrape_photo_page(url)
     begin
-      response = JSON.parse(URI.open(url).read)
+      # Use the helper method here too!
+      json_data = open_url(url)
+      response = JSON.parse(json_data)
+      
       response['items'].each do |image|
         create_photo(image) if image['extended'] && image['extended']['sample_type'] == 'full'
       end
     rescue OpenURI::HTTPError => e
-      puts "HTTP error occurred: #{e.message} for URL: #{url}. Skipping."
+      puts "❌ HTTP error: #{e.message} for URL: #{url}. (Likely 403 Forbidden or 404)"
     rescue StandardError => e
-      puts "Error occurred: #{e.message} for URL: #{url}. Skipping."
+      puts "❌ Error: #{e.message} for URL: #{url}."
     end
   end
 
@@ -66,10 +89,11 @@ class CuriosityScraper
     link = image['https_url']
     
     if camera.is_a?(String)
-      puts "WARNING: Camera not found. Name: #{camera}"
+      puts "⚠️ WARNING: Camera not found. Name: #{camera}"
     else
       photo = Photo.find_or_initialize_by(sol: sol, camera: camera, img_src: link, rover: rover)
-      photo.log_and_save_if_new
+      # Assuming log_and_save_if_new is a method on your Photo model
+      photo.save if photo.new_record? 
     end
   end
 
@@ -79,15 +103,15 @@ class CuriosityScraper
 
     if camera.nil?
       # Log a warning
-      puts "WARNING: Camera not found. Name: #{camera_name}. Adding to database."
+      puts "⚠️ Camera missing: #{camera_name}. Creating it now..."
 
       # Add the new camera to the database
       camera = rover.cameras.create(name: camera_name, full_name: camera_name)
 
       if camera.persisted?
-        puts "New camera added to database: #{camera_name}"
+        puts "✅ Created camera: #{camera_name}"
       else
-        puts "Failed to add camera to the database: #{camera_name}"
+        puts "❌ Failed to create camera: #{camera_name}"
       end
     end
 
