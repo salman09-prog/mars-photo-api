@@ -7,6 +7,7 @@ opportunity = Rover.find_or_create_by(name: "Opportunity",
 spirit = Rover.find_or_create_by(name: "Spirit",
                                  landing_date: Date.new(2004, 1, 4))
 
+
 perseverance.cameras.find_or_create_by(name: "EDL_RUCAM", full_name: "Rover Up-Look Camera")
 perseverance.cameras.find_or_create_by(name: "EDL_RDCAM", full_name: "Rover Down-Look Camera")
 perseverance.cameras.find_or_create_by(name: "EDL_DDCAM", full_name: "Descent Stage Down-Look Camera")
@@ -25,12 +26,14 @@ perseverance.cameras.find_or_create_by(name: "SHERLOC_WATSON", full_name: "SHERL
 perseverance.cameras.find_or_create_by(name: "SUPERCAM_RMI", full_name: "SuperCam Remote Micro Imager")
 perseverance.cameras.find_or_create_by(name: "LCAM", full_name: "Lander Vision System Camera")
 
+
 opportunity.cameras.find_or_create_by(name: "FHAZ", full_name: "Front Hazard Avoidance Camera")
 opportunity.cameras.find_or_create_by(name: "RHAZ", full_name: "Read Hazard Avoidance Camera")
 opportunity.cameras.find_or_create_by(name: "NAVCAM", full_name: "Navigation Camera")
 opportunity.cameras.find_or_create_by(name: "PANCAM", full_name: "Panoramic Camera")
 opportunity.cameras.find_or_create_by(name: "MINITES", full_name: "Miniature Thermal Emission Spectrometer (Mini-TES)")
 opportunity.cameras.find_or_create_by(name: "ENTRY", full_name: "Entry, Descent, and Landing Camera")
+
 
 curiosity.cameras.find_or_create_by(name: "FHAZ", full_name: "Front Hazard Avoidance Camera")
 curiosity.cameras.find_or_create_by(name: "RHAZ", full_name: "Read Hazard Avoidance Camera")
@@ -40,6 +43,7 @@ curiosity.cameras.find_or_create_by(name: "MAHLI", full_name: "Mars Hand Lens Im
 curiosity.cameras.find_or_create_by(name: "MARDI", full_name: "Mars Descent Imager")
 curiosity.cameras.find_or_create_by(name: "NAVCAM", full_name: "Navigation Camera")
 
+
 spirit.cameras.find_or_create_by(name: "FHAZ", full_name: "Front Hazard Avoidance Camera")
 spirit.cameras.find_or_create_by(name: "RHAZ", full_name: "Read Hazard Avoidance Camera")
 spirit.cameras.find_or_create_by(name: "NAVCAM", full_name: "Navigation Camera")
@@ -47,7 +51,8 @@ spirit.cameras.find_or_create_by(name: "PANCAM", full_name: "Panoramic Camera")
 spirit.cameras.find_or_create_by(name: "MINITES", full_name: "Miniature Thermal Emission Spectrometer (Mini-TES)")
 spirit.cameras.find_or_create_by(name: "ENTRY", full_name: "Entry, Descent, and Landing Camera")
 
+
 # PerseveranceScraper.new.scrape
-CuriosityScraper.new.scrape
+# CuriosityScraper.new.scrape   <-- IMPORTANT: Commented out to prevent deploy crashes!
 # OpportunitySpiritScraper.new(opportunity).scrape
 # OpportunitySpiritScraper.new(spirit).scrape

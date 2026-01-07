@@ -1,92 +1,119 @@
 class CuriosityScraper
   require "open-uri"
   require 'json'
-  BASE_URL = "https://mars.nasa.gov/api/v1/raw_image_items/"
 
-  attr_reader :rover
+  # Use the official API URL structure
+  BASE_URL = "https://api.nasa.gov/mars-photos/api/v1/rovers/curiosity/photos"
+
+  attr_reader :rover, :api_key
+
   def initialize
     @rover = Rover.find_by(name: "Curiosity")
+    # Grab key from ENV, fallback to DEMO_KEY
+    @api_key = ENV['NASA_API_KEY'] || 'DEMO_KEY'
   end
 
   def scrape
-    create_photos
+    collect_and_save_photos
   end
 
-  def collect_links
-    response = JSON.parse(URI.open(BASE_URL + "?order=sol%20desc,instrument_sort%20asc,sample_type_sort%20asc,%20date_taken%20desc&per_page=1&page=0&condition_1=msl:mission").read)
-    latest_sol_available = response["items"].first["sol"].to_i
+  # Helper to open URLs with error handling
+  def open_url(url)
+    puts "📡 Fetching: #{url}"
+    URI.open(url).read
+  rescue OpenURI::HTTPError => e
+    puts "❌ HTTP Error: #{e.message} (Likely rate limit or invalid key)"
+    return nil
+  end
 
-    # Use 0 if no photos exist yet
+  def collect_and_save_photos
+    # 1. Find out the latest Sol from NASA's manifest
+    manifest_url = "https://api.nasa.gov/mars-photos/api/v1/manifests/curiosity?api_key=#{@api_key}"
+    json_data = open_url(manifest_url)
+    return if json_data.nil?
+
+    manifest = JSON.parse(json_data)
+    max_sol = manifest["photo_manifest"]["max_sol"].to_i
+
+    # 2. Check where we left off in our DB
     latest_sol_scraped = rover.photos.maximum(:sol).to_i || 0
-
-    # Start from where we left off
     start_sol = latest_sol_scraped + 1
 
-    # Stop after 10 sols (SAFER for free tier)
-    end_sol = [start_sol + 10, latest_sol_available].min
+    # 3. Limit to 50 Sols at a time to be safe
+    end_sol = [start_sol + 50, max_sol].min
 
-    # If we are already caught up, don't do anything
-    return [] if start_sol > latest_sol_available
+    puts "📊 Status: DB Sol: #{latest_sol_scraped} | NASA Max Sol: #{max_sol}"
 
-    sols_to_scrape = (start_sol..end_sol)
+    if start_sol > max_sol
+      puts "✅ Up to date! No new photos."
+      return
+    end
 
-    sols_to_scrape.map { |sol|
-      "#{BASE_URL}?order=sol%20desc,instrument_sort%20asc,sample_type_sort%20asc,%20date_taken%20desc&per_page=200&page=0&condition_1=msl:mission&condition_2=#{sol}:sol:in"
-    }
+    puts "🚀 Scraping Sols #{start_sol} to #{end_sol}..."
+
+    # 4. Loop through the Sols
+    (start_sol..end_sol).each do |sol|
+      # Official API format: ?sol=1000&api_key=XYZ
+      url = "#{BASE_URL}?sol=#{sol}&api_key=#{@api_key}"
+      
+      data = open_url(url)
+      next if data.nil? # Skip if request failed
+
+      response = JSON.parse(data)
+      photos = response["photos"] # Official API uses "photos" array
+
+      if photos.nil? || photos.empty?
+        puts "🌑 Sol #{sol}: No photos found."
+        next
+      end
+
+      puts "📸 Sol #{sol}: Found #{photos.count} photos. Saving..."
+      
+      photos.each do |photo_data|
+        create_photo(photo_data)
+      end
+    end
   end
-
-
 
   private
 
-  def create_photos
-    collect_links.each do |url|
-      scrape_photo_page(url)
-    end
-  end
+  def create_photo(data)
+    # Official API structure is flatter:
+    # {
+    #   "id": 102693,
+    #   "sol": 1000,
+    #   "camera": { "name": "FHAZ", "full_name": "Front Hazard..." },
+    #   "img_src": "http://...",
+    #   "earth_date": "2015-05-30"
+    # }
 
-  def scrape_photo_page(url)
-    begin
-      response = JSON.parse(URI.open(url).read)
-      response['items'].each do |image|
-        create_photo(image) if image['extended'] && image['extended']['sample_type'] == 'full'
-      end
-    rescue OpenURI::HTTPError => e
-      puts "HTTP error occurred: #{e.message} for URL: #{url}. Skipping."
-    rescue StandardError => e
-      puts "Error occurred: #{e.message} for URL: #{url}. Skipping."
-    end
-  end
-
-  def create_photo(image)
-    sol = image['sol']
-    camera = camera_from_json(image)
-    link = image['https_url']
+    sol = data['sol']
+    img_src = data['img_src']
     
-    if camera.is_a?(String)
-      puts "WARNING: Camera not found. Name: #{camera}"
-    else
-      photo = Photo.find_or_initialize_by(sol: sol, camera: camera, img_src: link, rover: rover)
-      photo.log_and_save_if_new
+    # Handle HTTP to HTTPS conversion if needed
+    img_src.sub!('http:', 'https:') if img_src.start_with?('http:')
+
+    camera_data = data['camera']
+    camera = find_or_create_camera(camera_data)
+
+    photo = Photo.find_or_initialize_by(sol: sol, camera: camera, img_src: img_src, rover: rover)
+    
+    if photo.new_record?
+        photo.save 
+        # Optional: Print a dot to show progress without spamming logs
+        print "." 
     end
   end
 
-  def camera_from_json(image)
-    camera_name = image['instrument']
-    camera = rover.cameras.find_by(name: camera_name) || rover.cameras.find_by(full_name: camera_name)
+  def find_or_create_camera(camera_data)
+    name = camera_data['name']
+    full_name = camera_data['full_name']
+
+    camera = rover.cameras.find_by(name: name)
 
     if camera.nil?
-      # Log a warning
-      puts "WARNING: Camera not found. Name: #{camera_name}. Adding to database."
-
-      # Add the new camera to the database
-      camera = rover.cameras.create(name: camera_name, full_name: camera_name)
-
-      if camera.persisted?
-        puts "New camera added to database: #{camera_name}"
-      else
-        puts "Failed to add camera to the database: #{camera_name}"
-      end
+      puts "\n⚠️ New Camera Found: #{name} (#{full_name}). Creating..."
+      camera = rover.cameras.create(name: name, full_name: full_name)
     end
 
     camera
